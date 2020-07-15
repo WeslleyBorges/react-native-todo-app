@@ -7,12 +7,61 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  Platform,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
+
+import moment from 'moment';
 
 import commonStyles from '../commonStyles';
 
-export default ({onCancel, isVisible}) => {
+export default ({onCancel, onSave, isVisible}) => {
   const [desc, setDesc] = React.useState('');
+  const [date, setDate] = React.useState(new Date());
+  const [datePickerIsVisible, setDatePickerIsVisible] = React.useState(false);
+
+  getDatePicker = () => {
+    let datePicker = (
+      <DateTimePicker
+        value={date}
+        onChange={(_, selectedDate) => {
+          setDate(selectedDate);
+          setDatePickerIsVisible(false);
+        }}
+        mode="date"></DateTimePicker>
+    );
+
+    const dateString = moment(date).format('ddd, D [de] MMMM [de] YYYY');
+
+    if (Platform.OS === 'android') {
+      datePicker = (
+        <View>
+          <TouchableOpacity onPress={() => setDatePickerIsVisible(true)}>
+            <Text style={styles.date}>{dateString}</Text>
+          </TouchableOpacity>
+          {datePickerIsVisible && datePicker}
+        </View>
+      );
+    }
+
+    return datePicker;
+  };
+
+  // const onChange = (event, selectedDate) => {
+  //   const currentDate = selectedDate || date;
+  //   setShow(Platform.OS === 'ios');
+  //   setDate(currentDate);
+  // };
+
+  const save = () => {
+    const newTask = {desc, date};
+
+    onSave && onSave(newTask);
+
+    setDesc('');
+    setDate(new Date());
+    setDatePickerIsVisible(false);
+  };
 
   return (
     <Modal
@@ -30,12 +79,23 @@ export default ({onCancel, isVisible}) => {
           placeholder="Informe a descrição"
           value={desc}
           onChangeText={setDesc}></TextInput>
+        {getDatePicker()}
+        {/* {datePickerIsVisible && (
+          <DateTimePicker
+            testID="dateTimePicker"
+            value={date}
+            mode="date"
+            onChange={onChange}
+          />
+        )} */}
         <View style={styles.buttons}>
           <TouchableOpacity onPress={onCancel}>
             <Text style={styles.button}>Cancelar</Text>
           </TouchableOpacity>
           <TouchableOpacity>
-            <Text style={styles.button}>Salvar</Text>
+            <Text style={styles.button} onPress={save}>
+              Salvar
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -52,7 +112,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
   },
   container: {
-    flex: 1,
     backgroundColor: 'white',
   },
   header: {
@@ -80,5 +139,10 @@ const styles = StyleSheet.create({
     margin: 20,
     marginRight: 30,
     color: commonStyles.colors.today,
+  },
+  date: {
+    fontFamily: commonStyles.fontfamily,
+    marginLeft: 15,
+    fontSize: 20,
   },
 });
