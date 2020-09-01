@@ -11,99 +11,97 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import AsyncStorage from '@react-native-community/async-storage';
+import axios from 'axios';
 
 import moment from 'moment';
 import 'moment/locale/pt-br';
 
 import todayImage from '../../assets/imgs/today.jpg';
+import tomorrowImage from '../../assets/imgs/tomorrow.jpg';
+import weekImage from '../../assets/imgs/week.jpg';
+import monthImage from '../../assets/imgs/month.jpg';
+
 import commonStyles from '../commonStyles';
 import Task from '../components/Task';
 import AddTask from './AddTask';
+import {REACT_APP_BASE_URL} from '../env';
 
-export default () => {
+export default ({title, daysAhead, navigation}) => {
   const [tasks, setTasks] = useState([]);
   const [showDoneTasks, setShowDoneTasks] = useState(true);
   const [showAddTaskModal, setShowAddTaskModal] = useState(false);
+  const [loadingTasks, setLoadingTasks] = useState(false);
+
+  const loadTasks = async () => {
+    // COLOCAR A DATA E O QUERY PARAM DATE
+    try {
+      const maxDate = moment()
+        .add({days: daysAhead})
+        .format('YYYY-MM-30 HH:mm:ss');
+      const {data} = await axios.get(
+        `${REACT_APP_BASE_URL}/tasks?date=${maxDate}`,
+      );
+      setTasks(data);
+      setLoadingTasks(true);
+    } catch (e) {
+      console.log(e);
+      Alert.alert('Erro', 'As tasks não puderam ser recuperadas');
+    } finally {
+      setLoadingTasks(false);
+    }
+  };
 
   useEffect(() => {
-    const loadTasks = async () => {
-      await AsyncStorage.getItem('tasks', (_, tasksFromStorage) =>
-        setTasks(JSON.parse(tasksFromStorage)),
-      );
-    };
     loadTasks();
   }, []);
 
-  useEffect(() => {
-    console.log('TASKS - USE EFFECT TASKS CHANGED', tasks.length);
-    const saveTasks = async () => {
-      const stringfiedData = JSON.stringify(tasks);
-      await AsyncStorage.setItem('tasks', stringfiedData);
-    };
-
-    saveTasks();
-  }, [tasks.length]);
-
-  const toggleTask = (taskId) => {
-    const tasksHere = [...tasks];
-    tasksHere.forEach((task) => {
-      if (task.id === taskId) {
-        if (task.doneAt) task.doneAt = null;
-        else task.doneAt = new Date();
-      }
-    });
-    setTasks(tasksHere);
+  const toggleTask = async (taskId) => {
+    try {
+      await axios.put(`${REACT_APP_BASE_URL}/tasks/${taskId}/toggle`);
+      Alert.alert('Sucesso', 'A task foi togglezada com sucesso!');
+      loadTasks();
+    } catch (e) {
+      console.log(e);
+      Alert.alert('Erro', 'Houve um erro no toggle da task');
+    }
   };
 
   const today = moment().locale('pt-br').format('ddd, D [de] MMMM');
 
-  const addTask = (newTask) => {
+  const addTask = async (newTask) => {
     if (!newTask.desc || !newTask.desc.trim()) {
       Alert.alert('Dados Inválidos', 'Descrição não informada');
       return;
     }
 
-    const tasksLocal = tasks;
-
-    tasksLocal.push({
-      id: Math.floor(Math.random() * 10000).toString(),
-      desc: newTask.desc,
-      estimateAt: newTask.date,
-      doneAt: null,
-    });
-    console.log(tasksLocal);
-    setTasks(tasksLocal);
-    setShowAddTaskModal(false);
-    console.log(tasks);
+    try {
+      await axios.post(`${REACT_APP_BASE_URL}/tasks`, {
+        desc: newTask.desc,
+        estimateAt: newTask.date,
+      });
+      setShowAddTaskModal(false);
+      Alert.alert('Sucesso', 'Task cadastrada com sucesso');
+      loadTasks();
+    } catch (e) {
+      console.log(e);
+      Alert.alert('Erro', 'Houve algum erro ao tentar remover a task');
+    }
   };
 
-  const deleteTask = (id) => {
-    const tasksLocal = tasks.filter((task) => task.id !== id);
-    setTasks(tasksLocal);
+  const deleteTask = async (id) => {
+    try {
+      await axios.delete(`${REACT_APP_BASE_URL}/tasks/${id}`);
+      Alert.alert('Sucesso', 'Task removida com sucesso!');
+      loadTasks();
+    } catch (e) {
+      console.log(e);
+      Alert.alert('Error', 'Houve algum erro ao tentar remover a task!');
+    }
   };
 
-  return (
-    <View style={styles.container}>
-      <AddTask
-        isVisible={showAddTaskModal}
-        onCancel={() => setShowAddTaskModal(false)}
-        onSave={addTask}></AddTask>
-      <ImageBackground source={todayImage} style={styles.background}>
-        <View style={styles.iconBar}>
-          <TouchableOpacity onPress={() => setShowDoneTasks(false)}>
-            <Icon
-              name={showDoneTasks ? 'eye' : 'eye-slash'}
-              size={20}
-              color={commonStyles.colors.secondary}
-              onPress={() => setShowDoneTasks(!showDoneTasks)}></Icon>
-          </TouchableOpacity>
-        </View>
-        <View style={styles.titleBar}>
-          <Text style={styles.title}>Hoje</Text>
-          <Text style={styles.subTitle}>{today}</Text>
-        </View>
-      </ImageBackground>
-      <View style={styles.taskList}>
+  const renderTasks = () => {
+    if (tasks.length > 0 && !loadingTasks)
+      return (
         <FlatList
           data={tasks}
           keyExtractor={(item) => `${item.id}`}
@@ -117,9 +115,77 @@ export default () => {
                 toggleTask={toggleTask}></Task>
             );
           }}></FlatList>
-      </View>
+      );
+    else if (loadingTasks)
+      return <Text style={styles.noTasksText}>Carregando tasks...</Text>;
+    else
+      return (
+        <Text style={styles.noTasksText}>
+          Não há tasks para serem exibidas.
+        </Text>
+      );
+  };
+
+  const getImage = () => {
+    switch (daysAhead) {
+      case 0:
+        return todayImage;
+      case 1:
+        return tomorrowImage;
+      case 7:
+        return weekImage;
+      default:
+        return monthImage;
+    }
+  };
+
+  const getButtonColor = () => {
+    switch (daysAhead) {
+      case 0:
+        return commonStyles.colors.today;
+      case 1:
+        return commonStyles.colors.tomorrow;
+      case 7:
+        return commonStyles.colors.week;
+      default:
+        return commonStyles.colors.month;
+    }
+  };
+
+  return (
+    <View style={styles.container}>
+      <AddTask
+        isVisible={showAddTaskModal}
+        onCancel={() => setShowAddTaskModal(false)}
+        onSave={addTask}></AddTask>
+      <ImageBackground source={getImage()} style={styles.background}>
+        <View style={styles.iconBar}>
+          <TouchableOpacity onPress={() => navigation.openDrawer()}>
+            <Icon
+              name="bars"
+              size={20}
+              color={commonStyles.colors.secondary}></Icon>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setShowDoneTasks(!showDoneTasks)}>
+            <Icon
+              name={showDoneTasks ? 'eye' : 'eye-slash'}
+              size={20}
+              color={commonStyles.colors.secondary}></Icon>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.titleBar}>
+          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.subTitle}>{today}</Text>
+        </View>
+      </ImageBackground>
+      <View style={styles.taskList}>{renderTasks()}</View>
       <TouchableOpacity
-        style={styles.addButton}
+        style={[
+          styles.addButton,
+          {
+            backgroundColor: getButtonColor(),
+          },
+        ]}
         onPress={() => setShowAddTaskModal(true)}
         activeOpacity={0.7}>
         <Icon
@@ -164,6 +230,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     justifyContent: 'flex-end',
     marginTop: Platform.OS === 'ios' ? 40 : 10,
+    justifyContent: 'space-between',
   },
   addButton: {
     position: 'absolute',
@@ -172,8 +239,15 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: commonStyles.colors.today,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  noTasksText: {
+    padding: 10,
+    backgroundColor: '#cecece',
+    fontFamily: commonStyles.fontFamily,
+    fontSize: 16,
+    textAlign: 'center',
+    fontWeight: 'bold',
   },
 });
